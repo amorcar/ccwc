@@ -1,6 +1,7 @@
 use std::env;
 use std::error::Error;
 use std::fs;
+use std::io::{self, Read};
 use std::process;
 
 fn main() {
@@ -23,7 +24,7 @@ pub enum CountType {
 }
 
 pub struct Config {
-    file_path: String,
+    file_path: Option<String>,
     count_type: Option<CountType>,
 }
 
@@ -32,12 +33,24 @@ impl Config {
         args.next(); // ignore the binary name
 
         let (count_type, file_path) = match (args.next(), args.next()) {
-            (Some(flag), Some(path)) if flag == "-c" => (Some(CountType::Bytes), path),
-            (Some(flag), Some(path)) if flag == "-l" => (Some(CountType::Lines), path),
-            (Some(flag), Some(path)) if flag == "-w" => (Some(CountType::Words), path),
-            (Some(flag), Some(path)) if flag == "-m" => (Some(CountType::Characters), path),
+            (Some(flag), Some(path)) if flag == "-c" => (Some(CountType::Bytes), Some(path)),
+            (Some(flag), Some(path)) if flag == "-l" => (Some(CountType::Lines), Some(path)),
+            (Some(flag), Some(path)) if flag == "-w" => (Some(CountType::Words), Some(path)),
+            (Some(flag), Some(path)) if flag == "-m" => (Some(CountType::Characters), Some(path)),
             (Some(_), Some(_)) => return Err("Invalid flag"),
-            (Some(path), None) => (None, path),
+            (Some(arg), None) => {
+                if arg == "-c" {
+                    (Some(CountType::Bytes), None)
+                } else if arg == "-l" {
+                    (Some(CountType::Lines), None)
+                } else if arg == "-w" {
+                    (Some(CountType::Words), None)
+                } else if arg == "-c" {
+                    (Some(CountType::Characters), None)
+                } else {
+                    (None, Some(arg))
+                }
+            }
             _ => return Err("Invalid arguments"),
         };
 
@@ -50,8 +63,14 @@ impl Config {
 
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     // read config.filepath
-    let filename = config.file_path.clone();
-    let contents = fs::read_to_string(config.file_path)?;
+    let (contents, filename) = match config.file_path {
+        Some(fp) => (fs::read_to_string(&fp)?, fp.clone()),
+        None => {
+            let mut buffer = String::new();
+            let _ = io::stdin().read_to_string(&mut buffer);
+            (buffer, "".to_string())
+        }
+    };
 
     // depending on config.count_type do one count or another
     let result = match config.count_type {
